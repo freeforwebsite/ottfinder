@@ -1,8 +1,8 @@
 import os
 import requests
 import datetime
-from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
+from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -128,6 +128,105 @@ async def unsubscribe(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(chat_id=chat_id, text="❌ You have been unsubscribed from daily updates.")
 
 
+def get_releases_for_date(target_date_str):
+    """Fetches movies released on a specific date."""
+    if TMDB_API_KEY == "YOUR_TMDB_API_KEY" or TMDB_API_KEY is None:
+        return "⚠️ Please set your TMDB API key in the code to fetch real data!"
+
+    url = f"https://api.themoviedb.org/3/discover/movie"
+    params = {
+        "api_key": TMDB_API_KEY,
+        "watch_region": REGION,
+        "with_watch_providers": PROVIDERS,
+        "primary_release_date.gte": target_date_str,
+        "primary_release_date.lte": target_date_str,
+        "sort_by": "popularity.desc"
+    }
+
+    try:
+        response = requests.get(url, params=params)
+        response.raise_for_status()
+        data = response.json()
+        
+        results = data.get("results", [])
+        if not results:
+            return f"🎬 No major OTT releases found for {target_date_str}."
+
+        message = f"🍿 **OTT Releases on {target_date_str}** 🍿\n\n"
+        for idx, movie in enumerate(results[:10]):
+            title = movie.get("title")
+            rating = movie.get("vote_average", "N/A")
+            message += f"{idx+1}. **{title}** - ⭐️ {rating}/10\n"
+            
+        return message
+
+    except Exception as e:
+        return f"❌ Error fetching releases: {e}"
+
+
+async def show_dates(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Shows an inline keyboard with recent dates."""
+    keyboard = []
+    today = datetime.date.today()
+    
+    row = []
+    for i in range(10):
+        d = today - datetime.timedelta(days=i)
+        date_str = d.strftime("%Y-%m-%d")
+        display_str = d.strftime("%d-%m-%Y")
+        btn = InlineKeyboardButton(display_str, callback_data=f"date_{date_str}")
+        row.append(btn)
+        
+        if len(row) == 2:
+            keyboard.append(row)
+            row = []
+            
+    if row:
+        keyboard.append(row)
+        
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    if update.message:
+        await update.message.reply_text('📅 Select a date to see OTT releases:', reply_markup=reply_markup)
+
+
+async def date_button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handles date button clicks."""
+    query = update.callback_query
+    await query.answer()
+    
+    data = query.data
+    if data.startswith("date_"):
+        target_date = data.split("_")[1]
+        await query.edit_message_text(text=f"🔍 Checking releases for {target_date}...")
+        
+        releases = get_releases_for_date(target_date)
+        
+        back_keyboard = [[InlineKeyboardButton("⬅️ Back to dates", callback_data="show_dates")]]
+        reply_markup = InlineKeyboardMarkup(back_keyboard)
+        
+        await query.edit_message_text(text=releases, parse_mode="Markdown", reply_markup=reply_markup)
+        
+    elif data == "show_dates":
+        keyboard = []
+        today = datetime.date.today()
+        row = []
+        for i in range(10):
+            d = today - datetime.timedelta(days=i)
+            date_str = d.strftime("%Y-%m-%d")
+            display_str = d.strftime("%d-%m-%Y")
+            btn = InlineKeyboardButton(display_str, callback_data=f"date_{date_str}")
+            row.append(btn)
+            if len(row) == 2:
+                keyboard.append(row)
+                row = []
+        if row:
+            keyboard.append(row)
+            
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.edit_message_text(text='📅 Select a date to see OTT releases:', reply_markup=reply_markup)
+
+
 import asyncio
 from aiohttp import web
 
@@ -158,8 +257,10 @@ async def main():
     # Commands
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("releases", fetch_releases))
+    application.add_handler(CommandHandler("dates", show_dates))
     application.add_handler(CommandHandler("subscribe", subscribe))
     application.add_handler(CommandHandler("unsubscribe", unsubscribe))
+    application.add_handler(CallbackQueryHandler(date_button_callback))
 
     print("Bot is starting...")
     # Initialize and start the application correctly
