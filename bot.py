@@ -234,6 +234,82 @@ async def search_movie(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await context.bot.send_message(chat_id=chat_id, text=f"❌ Error during search: {e}")
 
 
+import tempfile
+from fpdf import FPDF
+
+async def generate_year_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Generates a PDF list of movies for a specific year."""
+    chat_id = update.effective_chat.id
+    
+    if not context.args or not context.args[0].isdigit():
+        await context.bot.send_message(chat_id=chat_id, text="Please provide a valid year.\nExample: `/year 2026`", parse_mode="Markdown")
+        return
+        
+    year = context.args[0]
+    await context.bot.send_message(chat_id=chat_id, text=f"📄 Gathering data for {year}... Generating PDF, please wait.")
+    
+    url = f"https://api.themoviedb.org/3/discover/movie"
+    movies = []
+    
+    # Fetch up to 5 pages (100 movies)
+    for page in range(1, 6):
+        params = {
+            "api_key": TMDB_API_KEY,
+            "watch_region": REGION,
+            "with_watch_providers": PROVIDERS,
+            "with_release_type": "4",
+            "primary_release_year": year,
+            "sort_by": "popularity.desc",
+            "page": page
+        }
+        try:
+            res = requests.get(url, params=params)
+            data = res.json()
+            results = data.get("results", [])
+            if not results:
+                break
+            movies.extend(results)
+        except Exception:
+            break
+            
+    if not movies:
+        await context.bot.send_message(chat_id=chat_id, text=f"❌ No OTT releases found for the year {year}.")
+        return
+
+    try:
+        # Generate PDF
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_font("helvetica", "B", 16)
+        pdf.cell(0, 10, f"OTT Movie Releases - {year}", new_x="LMARGIN", new_y="NEXT", align="C")
+        pdf.ln(10)
+        
+        pdf.set_font("helvetica", "", 12)
+        
+        for idx, movie in enumerate(movies):
+            title = movie.get("title", "Unknown Title")
+            rating = movie.get("vote_average", "N/A")
+            rel_date = movie.get("release_date", "N/A")
+            
+            # Replace unsupported characters for standard helvetica font
+            clean_title = title.encode('latin-1', 'replace').decode('latin-1')
+            
+            line = f"{idx+1}. {clean_title} (Rating: {rating}/10, Date: {rel_date})"
+            pdf.cell(0, 10, line, new_x="LMARGIN", new_y="NEXT")
+            
+        # Save to temp file
+        pdf_path = os.path.join(tempfile.gettempdir(), f"OTT_Releases_{year}.pdf")
+        pdf.output(pdf_path)
+        
+        # Send document
+        with open(pdf_path, 'rb') as doc:
+            await context.bot.send_document(chat_id=chat_id, document=doc, filename=f"OTT_Releases_{year}.pdf")
+            
+        os.remove(pdf_path)
+    except Exception as e:
+        await context.bot.send_message(chat_id=chat_id, text=f"❌ Error generating PDF: {e}")
+
+
 def get_releases_for_date(target_date_str):
     """Fetches movies released on a specific date."""
     if TMDB_API_KEY == "YOUR_TMDB_API_KEY" or TMDB_API_KEY is None:
@@ -393,6 +469,7 @@ async def main():
     application.add_handler(CommandHandler("releases", fetch_releases))
     application.add_handler(CommandHandler("dates", show_dates))
     application.add_handler(CommandHandler("search", search_movie))
+    application.add_handler(CommandHandler("year", generate_year_pdf))
     application.add_handler(CommandHandler("subscribe", subscribe))
     application.add_handler(CommandHandler("unsubscribe", unsubscribe))
     application.add_handler(CallbackQueryHandler(date_button_callback))
