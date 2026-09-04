@@ -156,6 +156,84 @@ async def unsubscribe(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(chat_id=chat_id, text="❌ You have been unsubscribed from daily updates.")
 
 
+async def search_movie(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Searches for a movie and returns its details and poster."""
+    chat_id = update.effective_chat.id
+    
+    if not context.args:
+        await context.bot.send_message(chat_id=chat_id, text="Please provide a movie name.\nExample: `/search Inception`", parse_mode="Markdown")
+        return
+        
+    query = " ".join(context.args)
+    
+    url = f"https://api.themoviedb.org/3/search/movie"
+    params = {
+        "api_key": TMDB_API_KEY,
+        "query": query,
+        "region": REGION
+    }
+    
+    try:
+        res = requests.get(url, params=params)
+        res.raise_for_status()
+        data = res.json()
+        results = data.get("results", [])
+        
+        if not results:
+            await context.bot.send_message(chat_id=chat_id, text=f"❌ No movies found for '{query}'.")
+            return
+            
+        # Get the first result
+        movie = results[0]
+        movie_id = movie.get("id")
+        title = movie.get("title")
+        release_date = movie.get("release_date", "N/A")
+        rating = movie.get("vote_average", "N/A")
+        overview = movie.get("overview", "No description available.")
+        poster_path = movie.get("poster_path")
+        
+        # Fetch providers
+        platform_str = "Not available on streaming right now."
+        prov_url = f"https://api.themoviedb.org/3/movie/{movie_id}/watch/providers"
+        prov_res = requests.get(prov_url, params={"api_key": TMDB_API_KEY})
+        if prov_res.status_code == 200:
+            prov_data = prov_res.json().get("results", {}).get(REGION, {})
+            providers = prov_data.get("flatrate", [])
+            if not providers:
+                providers = prov_data.get("free", [])
+            if not providers:
+                providers = prov_data.get("ads", [])
+            if not providers:
+                providers = prov_data.get("rent", [])
+            if not providers:
+                providers = prov_data.get("buy", [])
+                
+            if providers:
+                platform_str = " | ".join([p.get("provider_name") for p in providers])
+                
+        # Format message
+        year = release_date[:4] if release_date and len(release_date) >= 4 else 'N/A'
+        caption = (
+            f"🎬 **{title}** ({year})\n\n"
+            f"⭐️ **Rating:** {rating}/10\n"
+            f"📺 **Available on:** {platform_str}\n\n"
+            f"📖 **Overview:**\n_{overview}_"
+        )
+        
+        # Trim caption if too long (Telegram limit is 1024 for photo captions)
+        if len(caption) > 1000:
+            caption = caption[:1000] + "..."
+            
+        if poster_path:
+            poster_url = f"https://image.tmdb.org/t/p/w500{poster_path}"
+            await context.bot.send_photo(chat_id=chat_id, photo=poster_url, caption=caption, parse_mode="Markdown")
+        else:
+            await context.bot.send_message(chat_id=chat_id, text=caption, parse_mode="Markdown")
+            
+    except Exception as e:
+        await context.bot.send_message(chat_id=chat_id, text=f"❌ Error during search: {e}")
+
+
 def get_releases_for_date(target_date_str):
     """Fetches movies released on a specific date."""
     if TMDB_API_KEY == "YOUR_TMDB_API_KEY" or TMDB_API_KEY is None:
@@ -314,6 +392,7 @@ async def main():
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("releases", fetch_releases))
     application.add_handler(CommandHandler("dates", show_dates))
+    application.add_handler(CommandHandler("search", search_movie))
     application.add_handler(CommandHandler("subscribe", subscribe))
     application.add_handler(CommandHandler("unsubscribe", unsubscribe))
     application.add_handler(CallbackQueryHandler(date_button_callback))
