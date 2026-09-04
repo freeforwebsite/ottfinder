@@ -49,7 +49,26 @@ def get_daily_releases():
             title = movie.get("title")
             release_date = movie.get("release_date")
             rating = movie.get("vote_average", "N/A")
-            message += f"{idx+1}. **{title}** (Released: {release_date}) - ⭐️ {rating}/10\n"
+            movie_id = movie.get("id")
+            
+            platform_str = "Unknown Platform"
+            try:
+                prov_url = f"https://api.themoviedb.org/3/movie/{movie_id}/watch/providers"
+                prov_res = requests.get(prov_url, params={"api_key": TMDB_API_KEY})
+                if prov_res.status_code == 200:
+                    prov_data = prov_res.json().get("results", {}).get(REGION, {})
+                    providers = prov_data.get("flatrate", [])
+                    if not providers:
+                        providers = prov_data.get("rent", [])
+                    if not providers:
+                        providers = prov_data.get("buy", [])
+                        
+                    if providers:
+                        platform_str = " | ".join([p.get("provider_name") for p in providers])
+            except Exception:
+                pass
+                
+            message += f"{idx+1}. **{title}** (Released: {release_date}) - ⭐️ {rating}/10\n   📺 {platform_str}\n\n"
             
         return message
 
@@ -156,7 +175,26 @@ def get_releases_for_date(target_date_str):
         for idx, movie in enumerate(results[:10]):
             title = movie.get("title")
             rating = movie.get("vote_average", "N/A")
-            message += f"{idx+1}. **{title}** - ⭐️ {rating}/10\n"
+            movie_id = movie.get("id")
+            
+            platform_str = "Unknown Platform"
+            try:
+                prov_url = f"https://api.themoviedb.org/3/movie/{movie_id}/watch/providers"
+                prov_res = requests.get(prov_url, params={"api_key": TMDB_API_KEY})
+                if prov_res.status_code == 200:
+                    prov_data = prov_res.json().get("results", {}).get(REGION, {})
+                    providers = prov_data.get("flatrate", [])
+                    if not providers:
+                        providers = prov_data.get("rent", [])
+                    if not providers:
+                        providers = prov_data.get("buy", [])
+                        
+                    if providers:
+                        platform_str = " | ".join([p.get("provider_name") for p in providers])
+            except Exception:
+                pass
+                
+            message += f"{idx+1}. **{title}** - ⭐️ {rating}/10\n   📺 {platform_str}\n\n"
             
         return message
 
