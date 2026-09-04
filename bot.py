@@ -128,10 +128,29 @@ async def unsubscribe(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(chat_id=chat_id, text="❌ You have been unsubscribed from daily updates.")
 
 
-def main():
-    if TELEGRAM_BOT_TOKEN == "YOUR_TELEGRAM_BOT_TOKEN":
+import asyncio
+from aiohttp import web
+
+async def health_check(request):
+    return web.Response(text="Bot is running!")
+
+async def start_web_server():
+    app = web.Application()
+    app.router.add_get('/', health_check)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    port = int(os.environ.get("PORT", 8080))
+    site = web.TCPSite(runner, '0.0.0.0', port)
+    await site.start()
+    print(f"Dummy web server started on port {port}")
+
+async def main():
+    if TELEGRAM_BOT_TOKEN == "YOUR_TELEGRAM_BOT_TOKEN" or TELEGRAM_BOT_TOKEN is None:
         print("ERROR: Please set your TELEGRAM_BOT_TOKEN in the code before running.")
         return
+
+    # Start the dummy web server
+    await start_web_server()
 
     # Create the Application and pass it your bot's token.
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
@@ -144,7 +163,11 @@ def main():
 
     print("Bot is starting...")
     # Run the bot until the user presses Ctrl-C
-    application.run_polling(allowed_updates=Update.ALL)
+    await application.updater.start_polling(allowed_updates=Update.ALL)
+    await application.start()
+    
+    # Keep the application running
+    await asyncio.Event().wait()
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
