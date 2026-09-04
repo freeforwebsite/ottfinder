@@ -162,9 +162,10 @@ async def main():
     application.add_handler(CommandHandler("unsubscribe", unsubscribe))
 
     print("Bot is starting...")
-    # Run the bot until the user presses Ctrl-C
-    await application.updater.start_polling(allowed_updates=Update.ALL)
+    # Initialize and start the application correctly
+    await application.initialize()
     await application.start()
+    await application.updater.start_polling()
     
     # Keep the application running
     await asyncio.Event().wait()
