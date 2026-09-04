@@ -3,6 +3,9 @@ import requests
 import datetime
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # --- Configuration ---
 # Read keys from environment variables for Render
