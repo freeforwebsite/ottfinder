@@ -251,8 +251,11 @@ async def generate_year_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = f"https://api.themoviedb.org/3/discover/movie"
     movies = []
     
-    # Fetch up to 5 pages (100 movies)
-    for page in range(1, 6):
+    page = 1
+    total_pages = 1
+    
+    # Fetch all pages up to a reasonable maximum (100 pages = 2000 movies)
+    while page <= total_pages and page <= 100:
         params = {
             "api_key": TMDB_API_KEY,
             "watch_region": REGION,
@@ -265,10 +268,15 @@ async def generate_year_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             res = requests.get(url, params=params)
             data = res.json()
+            
+            if page == 1:
+                total_pages = data.get("total_pages", 1)
+                
             results = data.get("results", [])
             if not results:
                 break
             movies.extend(results)
+            page += 1
         except Exception:
             break
             
