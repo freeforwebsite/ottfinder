@@ -26,6 +26,8 @@ def get_daily_releases():
     today = datetime.date.today()
     one_week_ago = today - datetime.timedelta(days=7)
     
+    two_years_ago = today - datetime.timedelta(days=365*2)
+    
     url = f"https://api.themoviedb.org/3/discover/movie"
     params = {
         "api_key": TMDB_API_KEY,
@@ -34,6 +36,7 @@ def get_daily_releases():
         "with_release_type": "4", # 4 = Digital (OTT) release
         "release_date.gte": one_week_ago.strftime("%Y-%m-%d"),
         "release_date.lte": today.strftime("%Y-%m-%d"),
+        "primary_release_date.gte": two_years_ago.strftime("%Y-%m-%d"),
         "sort_by": "popularity.desc"
     }
 
@@ -60,6 +63,10 @@ def get_daily_releases():
                 if prov_res.status_code == 200:
                     prov_data = prov_res.json().get("results", {}).get(REGION, {})
                     providers = prov_data.get("flatrate", [])
+                    if not providers:
+                        providers = prov_data.get("free", [])
+                    if not providers:
+                        providers = prov_data.get("ads", [])
                     if not providers:
                         providers = prov_data.get("rent", [])
                     if not providers:
@@ -154,6 +161,9 @@ def get_releases_for_date(target_date_str):
     if TMDB_API_KEY == "YOUR_TMDB_API_KEY" or TMDB_API_KEY is None:
         return "⚠️ Please set your TMDB API key in the code to fetch real data!"
 
+    today = datetime.date.today()
+    two_years_ago = today - datetime.timedelta(days=365*2)
+    
     url = f"https://api.themoviedb.org/3/discover/movie"
     params = {
         "api_key": TMDB_API_KEY,
@@ -162,6 +172,7 @@ def get_releases_for_date(target_date_str):
         "with_release_type": "4", # 4 = Digital (OTT) release
         "release_date.gte": target_date_str,
         "release_date.lte": target_date_str,
+        "primary_release_date.gte": two_years_ago.strftime("%Y-%m-%d"),
         "sort_by": "popularity.desc"
     }
 
@@ -187,6 +198,10 @@ def get_releases_for_date(target_date_str):
                 if prov_res.status_code == 200:
                     prov_data = prov_res.json().get("results", {}).get(REGION, {})
                     providers = prov_data.get("flatrate", [])
+                    if not providers:
+                        providers = prov_data.get("free", [])
+                    if not providers:
+                        providers = prov_data.get("ads", [])
                     if not providers:
                         providers = prov_data.get("rent", [])
                     if not providers:
