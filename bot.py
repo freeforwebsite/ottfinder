@@ -12,9 +12,10 @@ load_dotenv()
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "YOUR_TELEGRAM_BOT_TOKEN")
 TMDB_API_KEY = os.environ.get("TMDB_API_KEY", "YOUR_TMDB_API_KEY")
 
-# TMDB Provider IDs (Example IDs for India, you can change region)
-# Netflix: 8, Amazon Prime Video: 119, Disney+ Hotstar: 122, JioCinema: 220
-PROVIDERS = "8|119|122|220"
+# TMDB Provider IDs (India)
+# Netflix: 8, Prime: 119, Hotstar: 122, JioCinema: 220
+# Zee5: 232, SonyLiv: 237, Sun NXT: 309, Aha: 532
+PROVIDERS = "8|119|122|220|232|237|309|532"
 REGION = "IN"
 
 def get_daily_releases():
@@ -30,9 +31,10 @@ def get_daily_releases():
         "api_key": TMDB_API_KEY,
         "watch_region": REGION,
         "with_watch_providers": PROVIDERS,
-        "primary_release_date.gte": one_week_ago.strftime("%Y-%m-%d"),
-        "primary_release_date.lte": today.strftime("%Y-%m-%d"),
-        "sort_by": "primary_release_date.desc"
+        "with_release_type": "4", # 4 = Digital (OTT) release
+        "release_date.gte": one_week_ago.strftime("%Y-%m-%d"),
+        "release_date.lte": today.strftime("%Y-%m-%d"),
+        "sort_by": "popularity.desc"
     }
 
     try:
@@ -157,8 +159,9 @@ def get_releases_for_date(target_date_str):
         "api_key": TMDB_API_KEY,
         "watch_region": REGION,
         "with_watch_providers": PROVIDERS,
-        "primary_release_date.gte": target_date_str,
-        "primary_release_date.lte": target_date_str,
+        "with_release_type": "4", # 4 = Digital (OTT) release
+        "release_date.gte": target_date_str,
+        "release_date.lte": target_date_str,
         "sort_by": "popularity.desc"
     }
 
