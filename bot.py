@@ -318,6 +318,98 @@ async def generate_year_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await context.bot.send_message(chat_id=chat_id, text=f"❌ Error generating PDF: {e}")
 
 
+import csv
+
+async def generate_bulk_csv(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Generates a CSV list of movies over a range of years."""
+    chat_id = update.effective_chat.id
+    
+    if len(context.args) != 2 or not context.args[0].isdigit() or not context.args[1].isdigit():
+        await context.bot.send_message(chat_id=chat_id, text="Please provide a start and end year.\nExample: `/bulk 2000 2026`", parse_mode="Markdown")
+        return
+        
+    start_year = int(context.args[0])
+    end_year = int(context.args[1])
+    
+    if start_year > end_year:
+        start_year, end_year = end_year, start_year
+        
+    await context.bot.send_message(
+        chat_id=chat_id, 
+        text=f"⏳ Gathering ALL OTT movies from {start_year} to {end_year}...\n\nThis is a massive query and will take a few minutes. I will send you a CSV file when it is completely finished!"
+    )
+    
+    # Run in background so we don't block the bot
+    asyncio.create_task(process_bulk_query(context.bot, chat_id, start_year, end_year))
+
+async def process_bulk_query(bot, chat_id, start_year, end_year):
+    csv_path = os.path.join(tempfile.gettempdir(), f"OTT_Bulk_{start_year}_{end_year}.csv")
+    url = f"https://api.themoviedb.org/3/discover/movie"
+    total_movies = 0
+    
+    try:
+        with open(csv_path, mode='w', newline='', encoding='utf-8') as f:
+            writer = csv.writer(f)
+            writer.writerow(["Title", "Release Date", "Rating", "Language"])
+            
+            for current_year in range(start_year, end_year + 1):
+                page = 1
+                total_pages = 1
+                
+                # TMDB allows max 500 pages per query
+                while page <= total_pages and page <= 500:
+                    params = {
+                        "api_key": TMDB_API_KEY,
+                        "watch_region": REGION,
+                        "with_watch_providers": PROVIDERS,
+                        "with_release_type": "4",
+                        "primary_release_year": current_year,
+                        "sort_by": "popularity.desc",
+                        "page": page
+                    }
+                    
+                    # Run requests.get in executor to avoid blocking the event loop
+                    loop = asyncio.get_event_loop()
+                    res = await loop.run_in_executor(None, lambda: requests.get(url, params=params))
+                    
+                    if res.status_code != 200:
+                        break
+                        
+                    data = res.json()
+                    if page == 1:
+                        total_pages = data.get("total_pages", 1)
+                        
+                    results = data.get("results", [])
+                    if not results:
+                        break
+                        
+                    for movie in results:
+                        title = movie.get("title", "Unknown")
+                        rel_date = movie.get("release_date", "N/A")
+                        rating = movie.get("vote_average", "N/A")
+                        lang = movie.get("original_language", "N/A")
+                        writer.writerow([title, rel_date, rating, lang])
+                        total_movies += 1
+                        
+                    page += 1
+                    await asyncio.sleep(0.1) # Prevent rate limiting
+                    
+        # Send document
+        with open(csv_path, 'rb') as doc:
+            await bot.send_document(
+                chat_id=chat_id, 
+                document=doc, 
+                filename=f"OTT_Releases_{start_year}_to_{end_year}.csv",
+                caption=f"✅ Finished! Found **{total_movies}** movies from {start_year} to {end_year}.",
+                parse_mode="Markdown"
+            )
+    except Exception as e:
+        await bot.send_message(chat_id=chat_id, text=f"❌ Error generating bulk list: {e}")
+    finally:
+        if os.path.exists(csv_path):
+            os.remove(csv_path)
+
+
 def get_releases_for_date(target_date_str):
     """Fetches movies released on a specific date."""
     if TMDB_API_KEY == "YOUR_TMDB_API_KEY" or TMDB_API_KEY is None:
@@ -478,6 +570,7 @@ async def main():
     application.add_handler(CommandHandler("dates", show_dates))
     application.add_handler(CommandHandler("search", search_movie))
     application.add_handler(CommandHandler("year", generate_year_pdf))
+    application.add_handler(CommandHandler("bulk", generate_bulk_csv))
     application.add_handler(CommandHandler("subscribe", subscribe))
     application.add_handler(CommandHandler("unsubscribe", unsubscribe))
     application.add_handler(CallbackQueryHandler(date_button_callback))
