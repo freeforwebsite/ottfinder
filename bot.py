@@ -490,7 +490,7 @@ async def generate_series_year_pdf(update: Update, context: ContextTypes.DEFAULT
         os.remove(pdf_path)
     except Exception as e:
         await context.bot.send_message(chat_id=chat_id, text=f"❌ Error generating PDF: {e}")
-\n
+
 async def generate_series_bulk_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Generates a PDF list of TV Series over a range of years."""
     chat_id = update.effective_chat.id
@@ -583,7 +583,7 @@ async def process_series_bulk_query(bot, chat_id, start_year, end_year):
     finally:
         if os.path.exists(pdf_path):
             os.remove(pdf_path)
-\n\ndef get_releases_for_date(target_date_str):
+def get_releases_for_date(target_date_str):
     """Fetches movies released on a specific date."""
     if TMDB_API_KEY == "YOUR_TMDB_API_KEY" or TMDB_API_KEY is None:
         return "⚠️ Please set your TMDB API key in the code to fetch real data!"
