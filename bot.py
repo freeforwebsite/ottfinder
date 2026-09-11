@@ -417,7 +417,173 @@ async def process_bulk_query(bot, chat_id, start_year, end_year):
             os.remove(pdf_path)
 
 
-def get_releases_for_date(target_date_str):
+
+async def generate_series_year_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Generates a PDF list of TV series for a specific year."""
+    chat_id = update.effective_chat.id
+    
+    if not context.args or not context.args[0].isdigit():
+        await context.bot.send_message(chat_id=chat_id, text="Please provide a valid year.\nExample: `/series_year 2026`", parse_mode="Markdown")
+        return
+        
+    year = context.args[0]
+    await context.bot.send_message(chat_id=chat_id, text=f"📄 Gathering TV Series data for {year}... Generating PDF, please wait.")
+    
+    url = f"https://api.themoviedb.org/3/discover/tv"
+    movies = []
+    
+    page = 1
+    total_pages = 1
+    
+    while page <= total_pages and page <= 100:
+        params = {
+            "api_key": TMDB_API_KEY,
+            "watch_region": REGION,
+            "with_watch_providers": PROVIDERS,
+            "air_date.gte": f"{year}-01-01",
+            "air_date.lte": f"{year}-12-31",
+            "sort_by": "popularity.desc",
+            "page": page
+        }
+        try:
+            res = requests.get(url, params=params)
+            data = res.json()
+            
+            if page == 1:
+                total_pages = data.get("total_pages", 1)
+                
+            results = data.get("results", [])
+            if not results:
+                break
+            movies.extend(results)
+            page += 1
+        except Exception:
+            break
+            
+    if not movies:
+        await context.bot.send_message(chat_id=chat_id, text=f"❌ No OTT TV Series found for the year {year}.")
+        return
+
+    try:
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_font("helvetica", "B", 16)
+        pdf.cell(0, 10, f"OTT TV Series - {year}", new_x="LMARGIN", new_y="NEXT", align="C")
+        pdf.ln(10)
+        pdf.set_font("helvetica", "", 12)
+        
+        for idx, movie in enumerate(movies):
+            title = movie.get("name", "Unknown Title")  # TV uses 'name' instead of 'title'
+            rel_date = movie.get("first_air_date", "")
+            year_str = rel_date[:4] if len(rel_date) >= 4 else year
+            clean_title = title.encode('latin-1', 'replace').decode('latin-1')
+            
+            line = f"{clean_title} ({year_str})"
+            pdf.cell(0, 8, line, new_x="LMARGIN", new_y="NEXT")
+            
+        pdf_path = os.path.join(tempfile.gettempdir(), f"OTT_Series_{year}.pdf")
+        pdf.output(pdf_path)
+        
+        with open(pdf_path, 'rb') as doc:
+            await context.bot.send_document(chat_id=chat_id, document=doc, filename=f"OTT_Series_{year}.pdf")
+            
+        os.remove(pdf_path)
+    except Exception as e:
+        await context.bot.send_message(chat_id=chat_id, text=f"❌ Error generating PDF: {e}")
+\n
+async def generate_series_bulk_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Generates a PDF list of TV Series over a range of years."""
+    chat_id = update.effective_chat.id
+    
+    if len(context.args) != 2 or not context.args[0].isdigit() or not context.args[1].isdigit():
+        await context.bot.send_message(chat_id=chat_id, text="Please provide a start and end year.\nExample: `/series_bulk 2000 2026`", parse_mode="Markdown")
+        return
+        
+    start_year = int(context.args[0])
+    end_year = int(context.args[1])
+    
+    if start_year > end_year:
+        start_year, end_year = end_year, start_year
+        
+    await context.bot.send_message(
+        chat_id=chat_id, 
+        text=f"⏳ Gathering ALL OTT TV Series from {start_year} to {end_year}...\n\nThis will take a few minutes. I will send you a PDF file when it is completely finished!"
+    )
+    
+    asyncio.create_task(process_series_bulk_query(context.bot, chat_id, start_year, end_year))
+
+async def process_series_bulk_query(bot, chat_id, start_year, end_year):
+    pdf_path = os.path.join(tempfile.gettempdir(), f"OTT_Series_Bulk_{start_year}_{end_year}.pdf")
+    url = f"https://api.themoviedb.org/3/discover/tv"
+    total_movies = 0
+    
+    try:
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_font("helvetica", "B", 16)
+        pdf.cell(0, 10, f"OTT TV Series ({start_year} - {end_year})", new_x="LMARGIN", new_y="NEXT", align="C")
+        pdf.ln(5)
+        pdf.set_font("helvetica", "", 12)
+        
+        for current_year in range(start_year, end_year + 1):
+            page = 1
+            total_pages = 1
+            
+            while page <= total_pages and page <= 500:
+                params = {
+                    "api_key": TMDB_API_KEY,
+                    "watch_region": REGION,
+                    "with_watch_providers": PROVIDERS,
+                    "air_date.gte": f"{current_year}-01-01",
+                    "air_date.lte": f"{current_year}-12-31",
+                    "sort_by": "popularity.desc",
+                    "page": page
+                }
+                
+                loop = asyncio.get_event_loop()
+                res = await loop.run_in_executor(None, lambda: requests.get(url, params=params))
+                
+                if res.status_code != 200:
+                    break
+                    
+                data = res.json()
+                if page == 1:
+                    total_pages = data.get("total_pages", 1)
+                    
+                results = data.get("results", [])
+                if not results:
+                    break
+                    
+                for movie in results:
+                    title = movie.get("name", "Unknown") # TV uses 'name'
+                    rel_date = movie.get("first_air_date", "")
+                    year_str = rel_date[:4] if len(rel_date) >= 4 else str(current_year)
+                    
+                    clean_title = title.encode('latin-1', 'replace').decode('latin-1')
+                    line = f"{clean_title} ({year_str})"
+                    
+                    pdf.cell(0, 8, line, new_x="LMARGIN", new_y="NEXT")
+                    total_movies += 1
+                    
+                page += 1
+                await asyncio.sleep(0.1)
+                
+        pdf.output(pdf_path)
+        
+        with open(pdf_path, 'rb') as doc:
+            await bot.send_document(
+                chat_id=chat_id, 
+                document=doc, 
+                filename=f"OTT_Series_{start_year}_to_{end_year}.pdf",
+                caption=f"✅ Finished! Found **{total_movies}** TV Series/Seasons from {start_year} to {end_year}.",
+                parse_mode="Markdown"
+            )
+    except Exception as e:
+        await bot.send_message(chat_id=chat_id, text=f"❌ Error generating bulk list: {e}")
+    finally:
+        if os.path.exists(pdf_path):
+            os.remove(pdf_path)
+\n\ndef get_releases_for_date(target_date_str):
     """Fetches movies released on a specific date."""
     if TMDB_API_KEY == "YOUR_TMDB_API_KEY" or TMDB_API_KEY is None:
         return "⚠️ Please set your TMDB API key in the code to fetch real data!"
@@ -578,6 +744,8 @@ async def main():
     application.add_handler(CommandHandler("search", search_movie))
     application.add_handler(CommandHandler("year", generate_year_pdf))
     application.add_handler(CommandHandler("bulk", generate_bulk_pdf))
+    application.add_handler(CommandHandler("series_year", generate_series_year_pdf))
+    application.add_handler(CommandHandler("series_bulk", generate_series_bulk_pdf))
     application.add_handler(CommandHandler("subscribe", subscribe))
     application.add_handler(CommandHandler("unsubscribe", unsubscribe))
     application.add_handler(CallbackQueryHandler(date_button_callback))
